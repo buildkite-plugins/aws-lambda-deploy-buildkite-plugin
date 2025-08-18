@@ -8,11 +8,12 @@ steps:
   - label: ":sparkles: Lint"
     plugins:
       - plugin-linter#v3.3.0:
-          id: template
+          id: aws-lambda-deploy
 
   - label: ":shell: Shellcheck"
     plugins:
       - shellcheck#v1.4.0:
           files:
-            - hooks/**
-            - lib/**
+            - "hooks/*"
+            - "lib/*.bash"
+          shellcheck-flags: -e

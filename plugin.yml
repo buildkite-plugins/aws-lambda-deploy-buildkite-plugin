@@ -1,48 +1,133 @@
-name: Buildkite Plugin
-description: Exceptional functionality
-author: https://github.com/buildkite-plugins
+name: aws-lambda-deploy
+description: "Deploys and rolls back AWS Lambda functions with alias and canary support."
+author: "https://github.com/buildkite-plugins"
+version: "1.0.0"
 requirements:
-  - bash
+  - aws
+  - jq
 configuration:
   properties:
-    mandatory:
+    function-name:
       type: string
-      description: "A required option for your plugin."
-    optional:
+      description: AWS Lambda function name
+    alias:
       type: string
-      description: "An optional configuration for your plugin."
-    numbers:
-      type: array
-      description: "An array where only numbers are valid."
-      items:
-        type: number
-    enabled:
-      type: boolean
-      description: "A boolean that can enable or disable a feature. Defaults to `false`."
-      default: false
-    config:
-      type: object
-      description: "An object with nested properties, each defined with specific types. The `host` property must always be defined."
-      properties:
-        host:
-          type: string
-          description: "A required string value for `config`."
-        port:
-          type: number
-          description: "A number value with a default that can be overridden."
-          default: 1234
-        ssl:
-          type: boolean
-          description: "A boolen value that defaults to `true`."
-          default: true
-      required:
-        - host
-      additionalProperties: true
-    timeout:
+      description: Lambda alias to manage
+    region:
+      type: string
+      description: AWS region
+    mode:
+      type: string
+      description: Operation mode
+      enum: [ "deploy", "rollback" ]
+    package-type:
+      type: string
+      description: Package type
+      enum: [ "Zip", "Image" ]
+      default: "Zip"
+    # Deployment strategy
+    strategy:
+      type: string
+      description: Deployment strategy (direct or canary)
+      enum: [ "direct", "canary" ]
+      default: "direct"
+    canary-weight:
       type: number
-      description: "A number with minimum and maximum values defined."
-      minimum: 1
-      maximum: 60
+      description: Traffic weight (0-1) for canary deployments
+      default: 0.05
+    canary-type:
+      type: string
+      description: Canary deployment type
+      enum: [ "linear", "all-at-once" ]
+      default: "all-at-once"
+    canary-steps:
+      type: integer
+      description: Number of steps for canary rollout
+      default: 1
+    canary-interval:
+      type: integer
+      description: Interval in seconds between canary steps
+      default: 60
+    canary-auto-promote:
+      type: boolean
+      description: Automatically promote canary after health checks pass
+      default: false
+    # Zip package options
+    zip-file:
+      type: string
+      description: Path to local zip file
+    s3-bucket:
+      type: string
+      description: S3 bucket for zip file
+    s3-key:
+      type: string
+      description: S3 key for zip file
+    s3-object-version:
+      type: string
+      description: S3 object version
+    # Container image options
+    image-uri:
+      type: string
+      description: ECR image URI
+    image-config:
+      type: object
+      description: Container configuration
+      properties:
+        entrypoint:
+          type: array
+          description: Container entrypoint
+        command:
+          type: array
+          description: Container command
+        working-directory:
+          type: string
+          description: Container working directory
+      additionalProperties: false
+    # Function configuration
+    environment:
+      type: object
+      description: Environment variables
+    timeout:
+      type: integer
+      description: Function timeout in seconds
+    memory-size:
+      type: integer
+      description: Memory allocation in MB
+    runtime:
+      type: string
+      description: Lambda runtime
+    handler:
+      type: string
+      description: Function handler
+    description:
+      type: string
+      description: Function description
+    # Health checks and rollback
+    auto-rollback:
+      type: boolean
+      description: Enable automatic rollback on failure
+      default: false
+    health-check-enabled:
+      type: boolean
+      description: Enable health check testing
+      default: false
+    health-check-timeout:
+      type: integer
+      description: Health check timeout in seconds
+      default: 300
+    health-check-payload:
+      type: string
+      description: JSON payload for test invocation
+    health-check-expected-status:
+      type: integer
+      description: Expected HTTP status code
+      default: 200
+    health-check-error-threshold:
+      type: number
+      description: Error threshold for health checks
+      default: 0.1
   required:
-    - mandatory
+    - function-name
+    - alias
+    - mode
   additionalProperties: false
