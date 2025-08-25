@@ -8,15 +8,7 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "${DIR}/plugin.bash"
 
 function deploy_lambda() {
-  local deployment_method="${BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_DEPLOYMENT_METHOD:-aws-cli}"
-
-  if [[ "${deployment_method}" == "sam" ]]; then
-    # For SAM, we don't pass the function/alias name directly, it's in the template
-    deploy_sam
-  else
-    # For aws-cli, we pass the arguments through
     deploy_aws_cli "$@"
-  fi
 }
 
 function deploy_aws_cli() {
