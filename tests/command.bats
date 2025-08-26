@@ -3,154 +3,274 @@
 setup() {
   load "${BATS_PLUGIN_PATH}/load.bash"
 
-  # Uncomment to enable stub debugging
-  # export CURL_STUB_DEBUG=/dev/tty
+  # Stub buildkite-agent command for metadata operations
+  stub buildkite-agent \
+    "meta-data set * * : echo Setting metadata" \
+    "meta-data get * : echo" \
+    "meta-data exists * : exit 1" \
+    "annotate --style * --context * * : echo Annotation created"
 
-  # you can set variables common to all tests here
-  export BUILDKITE_PLUGIN_YOUR_PLUGIN_NAME_MANDATORY='Value'
+  # Stub jq command for JSON parsing
+  stub jq \
+    "-r .Version : echo 1" \
+    "-r '.Version' : echo 1"
 }
 
-@test "Missing mandatory option fails" {
-  unset BUILDKITE_PLUGIN_YOUR_PLUGIN_NAME_MANDATORY
+teardown() {
+  if command -v unstub >/dev/null 2>&1; then
+    unstub aws || true
+    unstub buildkite-agent || true
+    unstub jq || true
+  fi
+}
 
-  run "$PWD"/hooks/command
+@test "Missing function-name fails" {
+  unset BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_FUNCTION_NAME
+  export BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_ALIAS='test'
+  export BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_MODE='deploy'
+
+  run "$PWD"/hooks/post-command
 
   assert_failure
-  assert_output --partial 'Missing mandatory option'
-  refute_output --partial 'Running plugin'
+  assert_output --partial 'Missing function-name'
 }
 
-@test "Normal basic operations" {
+@test "Missing alias fails" {
+  export BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_FUNCTION_NAME='test-function'
+  unset BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_ALIAS
+  export BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_MODE='deploy'
 
-  run "$PWD"/hooks/command
-
-  assert_success
-  assert_output --partial 'Running plugin with options'
-  assert_output --partial '- mandatory: Value'
-}
-
-@test "Optional value changes bejaviour" {
-  export BUILDKITE_PLUGIN_YOUR_PLUGIN_NAME_OPTIONAL='other value'
-
-  run "$PWD"/hooks/command
-
-  assert_success
-  assert_output --partial 'Running plugin with options'
-  assert_output --partial '- optional: other value'
-}
-
-@test "Numbers array processing" {
-  export BUILDKITE_PLUGIN_YOUR_PLUGIN_NAME_NUMBERS_0='1'
-  export BUILDKITE_PLUGIN_YOUR_PLUGIN_NAME_NUMBERS_1='2'
-  export BUILDKITE_PLUGIN_YOUR_PLUGIN_NAME_NUMBERS_2='3'
-
-  run "$PWD"/hooks/command
-
-  assert_success
-  assert_output --partial 'Running plugin with options'
-  assert_output --partial '- numbers: 1, 2, 3'
-}
-
-@test "Enabled boolean feature toggle" {
-  export BUILDKITE_PLUGIN_YOUR_PLUGIN_NAME_ENABLED='true'
-
-  run "$PWD"/hooks/command
-
-  assert_success
-  assert_output --partial 'Running plugin with options'
-  assert_output --partial '- enabled: true'
-}
-
-@test "Config object with nested properties" {
-  export BUILDKITE_PLUGIN_YOUR_PLUGIN_NAME_CONFIG_HOST='example.com'
-  export BUILDKITE_PLUGIN_YOUR_PLUGIN_NAME_CONFIG_PORT='8080'
-  export BUILDKITE_PLUGIN_YOUR_PLUGIN_NAME_CONFIG_SSL='true'
-
-  run "$PWD"/hooks/command
-
-  assert_success
-  assert_output --partial 'Running plugin with options'
-  assert_output --partial '- config.host: example.com'
-  assert_output --partial '- config.port: 8080'
-  assert_output --partial '- config.ssl: true'
-}
-
-@test "Timeout number validation" {
-  export BUILDKITE_PLUGIN_YOUR_PLUGIN_NAME_TIMEOUT='30'
-
-  run "$PWD"/hooks/command
-
-  assert_success
-  assert_output --partial 'Running plugin with options'
-  assert_output --partial '- timeout: 30'
-}
-
-@test "Timeout exceeds maximum fails" {
-  export BUILDKITE_PLUGIN_YOUR_PLUGIN_NAME_TIMEOUT='100'
-
-  run "$PWD"/hooks/command
+  run "$PWD"/hooks/post-command
 
   assert_failure
-  assert_output --partial 'Error: timeout must be between 1 and 60 seconds'
-  refute_output --partial 'Running plugin with options'
+  assert_output --partial 'Missing alias'
 }
 
-@test "Timeout below minimum fails" {
-  export BUILDKITE_PLUGIN_YOUR_PLUGIN_NAME_TIMEOUT='0'
+@test "Missing mode fails" {
+  export BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_FUNCTION_NAME='test-function'
+  export BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_ALIAS='test'
+  unset BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_MODE
 
-  run "$PWD"/hooks/command
+  run "$PWD"/hooks/post-command
 
   assert_failure
-  assert_output --partial 'Error: timeout must be between 1 and 60 seconds'
-  refute_output --partial 'Running plugin with options'
+  assert_output --partial 'Missing mode'
 }
 
-@test "Shows default values when not specified" {
-  run "$PWD"/hooks/command
+@test "Invalid mode fails" {
+  export BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_FUNCTION_NAME='test-function'
+  export BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_ALIAS='test'
+  export BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_MODE='invalid'
 
-  assert_success
-  assert_output --partial 'Running plugin with options'
-  assert_output --partial '- enabled: false'
-}
-
-@test "Config with only required host field" {
-  export BUILDKITE_PLUGIN_YOUR_PLUGIN_NAME_CONFIG_HOST='test.com'
-
-  run "$PWD"/hooks/command
-
-  assert_success
-  assert_output --partial 'Running plugin with options'
-  assert_output --partial '- config.host: test.com'
-  assert_output --partial '- config.port: 1234'
-  assert_output --partial '- config.ssl: true'
-}
-
-@test "Handles missing numbers array gracefully" {
-  run "$PWD"/hooks/command
-
-  assert_success
-  assert_output --partial 'Running plugin with options'
-  refute_output --partial '- numbers:'
-}
-
-@test "Enabled boolean set to false explicitly" {
-  export BUILDKITE_PLUGIN_YOUR_PLUGIN_NAME_ENABLED='false'
-
-  run "$PWD"/hooks/command
-
-  assert_success
-  assert_output --partial 'Running plugin with options'
-  assert_output --partial '- enabled: false'
-}
-
-@test "Numbers array with non-numeric element fails" {
-  export BUILDKITE_PLUGIN_YOUR_PLUGIN_NAME_NUMBERS_0='1'
-  export BUILDKITE_PLUGIN_YOUR_PLUGIN_NAME_NUMBERS_1='abc'
-  export BUILDKITE_PLUGIN_YOUR_PLUGIN_NAME_NUMBERS_2='3'
-
-  run "$PWD"/hooks/command
+  run "$PWD"/hooks/post-command
 
   assert_failure
-  assert_output --partial 'Error: numbers array contains non-numeric value: abc'
-  refute_output --partial 'Running plugin with options'
+  assert_output --partial 'Invalid mode: invalid'
+}
+
+@test "Deploy mode with Zip package but missing zip-file and S3 details fails" {
+  export BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_FUNCTION_NAME='test-function'
+  export BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_ALIAS='test'
+  export BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_MODE='deploy'
+  export BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_PACKAGE_TYPE='Zip'
+
+  run "$PWD"/hooks/post-command
+
+  assert_failure
+  assert_output --partial 'either zip-file or s3-bucket+s3-key must be specified'
+}
+
+@test "Deploy mode with Image package but missing image-uri fails" {
+  export BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_FUNCTION_NAME='test-function'
+  export BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_ALIAS='test'
+  export BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_MODE='deploy'
+  export BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_PACKAGE_TYPE='Image'
+
+  run "$PWD"/hooks/post-command
+
+  assert_failure
+  assert_output --partial 'image-uri must be specified'
+}
+
+@test "Invalid package type fails" {
+  export BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_FUNCTION_NAME='test-function'
+  export BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_ALIAS='test'
+  export BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_MODE='deploy'
+  export BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_PACKAGE_TYPE='Invalid'
+
+  run "$PWD"/hooks/post-command
+
+  assert_failure
+  assert_output --partial 'Invalid package-type: Invalid'
+}
+
+@test "Function does not exist fails" {
+  export BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_FUNCTION_NAME='nonexistent-function'
+  export BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_ALIAS='test'
+  export BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_MODE='rollback'
+  export BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_ZIP_FILE='test.zip'
+
+  stub aws \
+    "lambda get-function --function-name nonexistent-function --query Configuration.FunctionName --output text : exit 1"
+
+  run "$PWD"/hooks/post-command
+
+  assert_failure
+  assert_output --partial 'Function nonexistent-function does not exist and mode is rollback'
+}
+
+@test "Deploy mode with zip-file succeeds" {
+  export BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_FUNCTION_NAME='test-function'
+  export BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_ALIAS='test'
+  export BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_MODE='deploy'
+  export BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_ZIP_FILE='/tmp/test.zip'
+
+  # Create test zip file
+  echo "test" >/tmp/test.zip
+
+  stub aws \
+    "lambda get-function --function-name test-function --query Configuration.FunctionName --output text : echo test-function" \
+    "lambda get-alias --function-name test-function --name test --query FunctionVersion --output text : exit 1" \
+    "lambda update-function-code --function-name test-function --publish --zip-file fileb:///tmp/test.zip : echo '{\"Version\":\"$LATEST\"}'" \
+    "lambda publish-version --function-name test-function --description * : echo '{\"Version\":\"1\"}'" \
+    "lambda get-function --function-name test-function --qualifier 1 --query Configuration.State --output text : echo Active" \
+    "lambda get-function --function-name test-function --qualifier 1 --query Configuration.FunctionArn --output text : echo arn:aws:lambda:us-east-1:123456789012:function:test-function:1" \
+    "lambda update-alias --function-name test-function --name test --function-version 1 : echo '{\"FunctionVersion\":\"1\"}'"
+
+  run "$PWD"/hooks/post-command
+
+  assert_success
+  assert_output --partial '--- ✅ Deployment Result'
+  assert_output --partial 'Deploy of test-function to test completed successfully'
+}
+
+@test "Deploy mode with S3 details succeeds" {
+  export BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_FUNCTION_NAME='test-function'
+  export BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_ALIAS='test'
+  export BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_MODE='deploy'
+  export BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_S3_BUCKET='test-bucket'
+  export BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_S3_KEY='test-key'
+
+  stub aws \
+    "lambda get-function --function-name test-function --query Configuration.FunctionName --output text : echo test-function" \
+    "lambda get-alias --function-name test-function --name test --query FunctionVersion --output text : exit 1" \
+    "lambda update-function-code --function-name test-function --publish --s3-bucket test-bucket --s3-key test-key : echo '{\"Version\":\"$LATEST\"}'" \
+    "lambda publish-version --function-name test-function --description * : echo '{\"Version\":\"1\"}'" \
+    "lambda get-function --function-name test-function --qualifier 1 --query Configuration.State --output text : echo Active" \
+    "lambda get-function --function-name test-function --qualifier 1 --query Configuration.FunctionArn --output text : echo arn:aws:lambda:us-east-1:123456789012:function:test-function:1" \
+    "lambda update-alias --function-name test-function --name test --function-version 1 : echo '{\"FunctionVersion\":\"1\"}'"
+
+  run "$PWD"/hooks/post-command
+
+  assert_success
+  assert_output --partial '--- ✅ Deployment Result'
+  assert_output --partial 'Deploy of test-function to test completed successfully'
+}
+
+@test "Deploy mode with image-uri succeeds" {
+  export BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_FUNCTION_NAME='test-function'
+  export BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_ALIAS='test'
+  export BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_MODE='deploy'
+  export BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_PACKAGE_TYPE='Image'
+  export BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_IMAGE_URI='123456789012.dkr.ecr.us-east-1.amazonaws.com/my-func:latest'
+
+  stub aws \
+    "lambda get-function --function-name test-function --query Configuration.FunctionName --output text : echo test-function" \
+    "lambda get-alias --function-name test-function --name test --query FunctionVersion --output text : exit 1" \
+    "lambda update-function-code --function-name test-function --publish --image-uri 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-func:latest : echo '{\"Version\":\"$LATEST\"}'" \
+    "lambda publish-version --function-name test-function --description * : echo '{\"Version\":\"1\"}'" \
+    "lambda get-function --function-name test-function --qualifier 1 --query Configuration.State --output text : echo Active" \
+    "lambda get-function --function-name test-function --qualifier 1 --query Configuration.FunctionArn --output text : echo arn:aws:lambda:us-east-1:123456789012:function:test-function:1" \
+    "lambda update-alias --function-name test-function --name test --function-version 1 : echo '{\"FunctionVersion\":\"1\"}'"
+
+  run "$PWD"/hooks/post-command
+
+  assert_success
+  assert_output --partial '--- ✅ Deployment Result'
+  assert_output --partial 'Deploy of test-function to test completed successfully'
+}
+
+@test "Rollback mode succeeds" {
+  export BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_FUNCTION_NAME='test-function'
+  export BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_ALIAS='test'
+  export BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_MODE='rollback'
+
+  # Override the buildkite-agent stub for this test
+  unstub buildkite-agent || true
+  stub buildkite-agent \
+    "meta-data exists deployment:aws_lambda:result : exit 0" \
+    "meta-data get deployment:aws_lambda:result : echo success" \
+    "meta-data exists deployment:aws_lambda:current_version : exit 0" \
+    "meta-data get deployment:aws_lambda:current_version : echo 2" \
+    "meta-data exists deployment:aws_lambda:previous_version : exit 0" \
+    "meta-data get deployment:aws_lambda:previous_version : echo 1" \
+    "meta-data exists deployment:aws_lambda:previous_arn : exit 0" \
+    "meta-data get deployment:aws_lambda:previous_arn : echo arn:aws:lambda:us-east-1:123456789012:function:test-function:1" \
+    "meta-data exists deployment:aws_lambda:auto_rollback : exit 1" \
+    "meta-data exists deployment:aws_lambda:package_type : exit 0" \
+    "meta-data get deployment:aws_lambda:package_type : echo Zip" \
+    "annotate --style success --context lambda-deployment * : echo Annotation created"
+
+  stub aws \
+    "lambda get-function --function-name test-function --query Configuration.FunctionName --output text : echo test-function"
+
+  run "$PWD"/hooks/post-command
+
+  assert_success
+  assert_output --partial 'Deployment was successful, no rollback needed'
+}
+
+@test "Rollback mode after failed deployment succeeds" {
+  export BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_FUNCTION_NAME='test-function'
+  export BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_ALIAS='test'
+  export BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_MODE='rollback'
+
+  # Override the buildkite-agent stub for this test
+  unstub buildkite-agent || true
+  stub buildkite-agent \
+    "meta-data exists deployment:aws_lambda:result : exit 0" \
+    "meta-data get deployment:aws_lambda:result : echo failure" \
+    "meta-data exists deployment:aws_lambda:current_version : exit 0" \
+    "meta-data get deployment:aws_lambda:current_version : echo 2" \
+    "meta-data exists deployment:aws_lambda:previous_version : exit 0" \
+    "meta-data get deployment:aws_lambda:previous_version : echo 1" \
+    "meta-data exists deployment:aws_lambda:auto_rollback : exit 0" \
+    "meta-data get deployment:aws_lambda:auto_rollback : echo true" \
+    "annotate --style success --context lambda-deployment * : echo Annotation created"
+
+  stub aws \
+    "lambda get-function --function-name test-function --query Configuration.FunctionName --output text : echo test-function" \
+    "lambda update-alias --function-name test-function --name test --function-version 1 : echo '{"FunctionVersion":"1"}'"
+
+  run "$PWD"/hooks/post-command
+
+  assert_success
+  assert_output --partial '--- ✅ Rollback Result'
+  assert_output --partial 'Rollback of test-function on test completed successfully'
+}
+
+@test "Region argument is passed to AWS CLI" {
+  export BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_FUNCTION_NAME='test-function'
+  export BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_ALIAS='test'
+  export BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_MODE='deploy'
+  export BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_ZIP_FILE='/tmp/test.zip'
+  export BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_REGION='test-region'
+
+  # Create test zip file
+  echo "test" >/tmp/test.zip
+
+  stub aws \
+    "lambda get-function --region test-region --function-name test-function --query Configuration.FunctionName --output text : echo test-function" \
+    "lambda get-alias --region test-region --function-name test-function --name test --query FunctionVersion --output text : exit 1" \
+    "lambda update-function-code --region test-region --function-name test-function --publish --zip-file fileb:///tmp/test.zip : echo '{\"Version\":\"$LATEST\"}'" \
+    "lambda publish-version --region test-region --function-name test-function --description * : echo '{\"Version\":\"1\"}'" \
+    "lambda get-function --region test-region --function-name test-function --qualifier 1 --query Configuration.State --output text : echo Active" \
+    "lambda get-function --region test-region --function-name test-function --qualifier 1 --query Configuration.FunctionArn --output text : echo arn:aws:lambda:us-east-1:123456789012:function:test-function:1" \
+    "lambda update-alias --region test-region --function-name test-function --name test --function-version 1 : echo '{\"FunctionVersion\":\"1\"}'"
+
+  run "$PWD"/hooks/post-command
+
+  assert_success
+  assert_output --partial '--- ✅ Deployment Result'
+  assert_output --partial 'Deploy of test-function to test completed successfully'
 }

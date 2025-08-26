@@ -1,0 +1,9 @@
+#!/bin/bash
+set -euo pipefail
+
+trap 'echo "^^^ +++"; echo "Exit status $? at line $LINENO from: $BASH_COMMAND"' ERR
+
+# Disable AWS CLI V2 client-side pager for all AWS commands in this build
+export AWS_PAGER=""
+
+echo "AWS pager disabled for build"

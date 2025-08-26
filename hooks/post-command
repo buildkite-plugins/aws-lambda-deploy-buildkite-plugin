@@ -1,0 +1,121 @@
+#!/bin/bash
+set -euo pipefail
+
+trap 'echo "^^^ +++"; echo "Exit status $? at line $LINENO from: $BASH_COMMAND"' ERR
+
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# shellcheck source=lib/plugin.bash
+. "${DIR}/../lib/plugin.bash"
+
+# shellcheck source=lib/deploy.bash
+. "${DIR}/../lib/deploy.bash"
+
+# shellcheck source=lib/rollback.bash
+. "${DIR}/../lib/rollback.bash"
+
+# mandatory configurations
+function_name=${BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_FUNCTION_NAME?Missing function-name}
+alias_name=${BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_ALIAS?Missing alias}
+mode=${BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_MODE?Missing mode}
+
+# disable AWS CLI V2 client-side pager as this is not executed in an interactive mode
+export AWS_PAGER=""
+
+# setup AWS CLI arguments
+aws_default_args=()
+if [[ -n "${BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_REGION:-}" ]]; then
+  aws_default_args+=(--region "${BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_REGION}")
+fi
+
+# validate mode
+case "${mode}" in
+"deploy" | "rollback" | "promote-canary") ;;
+*)
+  echo ":boom: Invalid mode: ${mode}. Must be 'deploy', 'rollback', or 'promote-canary'"
+  exit 1
+  ;;
+esac
+
+# validate package type and required parameters for deploy mode
+if [[ "${mode}" == "deploy" ]]; then
+  package_type="${BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_PACKAGE_TYPE:-Zip}"
+
+  case "${package_type}" in
+  "Zip")
+    if [[ -z "${BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_ZIP_FILE:-}" ]]; then
+      if [[ -z "${BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_S3_BUCKET:-}" || -z "${BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_S3_KEY:-}" ]]; then
+        echo ":boom: For Zip package type, either zip-file or s3-bucket+s3-key must be specified"
+        exit 1
+      fi
+    fi
+    ;;
+  "Image")
+    if [[ -z "${BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_IMAGE_URI:-}" ]]; then
+      echo ":boom: For Image package type, image-uri must be specified"
+      exit 1
+    fi
+    ;;
+  *)
+    echo ":boom: Invalid package-type: ${package_type}. Must be 'Zip' or 'Image'"
+    exit 1
+    ;;
+  esac
+fi
+
+# check if function exists
+if ! aws lambda get-function \
+  "${aws_default_args[@]+${aws_default_args[@]}}" \
+  --function-name "${function_name}" \
+  --query 'Configuration.FunctionName' \
+  --output text >/dev/null 2>&1; then
+
+  if [[ "${mode}" == "deploy" ]]; then
+    if ! create_lambda_function "${function_name}" "${alias_name}" "${aws_default_args[@]+${aws_default_args[@]}}"; then
+      log_error "Failed to create function ${function_name}"
+      exit 1
+    fi
+    log_success "✅ Function ${function_name} created successfully"
+    exit 0
+  else
+    log_error "Function ${function_name} does not exist and mode is ${mode}"
+    exit 1
+  fi
+fi
+
+# execute mode-specific logic
+case "${mode}" in
+"deploy")
+  if deploy_lambda "${function_name}" "${alias_name}" "${aws_default_args[@]+${aws_default_args[@]}}"; then
+    echo "--- ✅ Deployment Result"
+    log_success "Deploy of ${function_name} to ${alias_name} completed successfully"
+    exit 0
+  else
+    echo "--- ❌ Deployment Result"
+    log_error "Deploy of ${function_name} to ${alias_name} failed"
+    exit 1
+  fi
+  ;;
+"promote-canary")
+  if promote_canary "${function_name}" "${alias_name}" "${aws_default_args[@]+${aws_default_args[@]}}"; then
+    echo "--- ✅ Canary Promotion Result"
+    log_success "Canary promotion of ${function_name} on ${alias_name} completed successfully"
+    exit 0
+  else
+    echo "--- ❌ Canary Promotion Result"
+    log_error "Canary promotion of ${function_name} on ${alias_name} failed"
+    exit 1
+  fi
+  ;;
+"rollback")
+  if rollback_lambda "${function_name}" "${alias_name}" "${aws_default_args[@]+${aws_default_args[@]}}"; then
+    echo "--- ✅ Rollback Result"
+    log_success "Rollback of ${function_name} on ${alias_name} completed successfully"
+    exit 0
+  else
+    echo "--- ❌ Rollback Result"
+    log_error "Rollback of ${function_name} on ${alias_name} failed"
+    exit 1
+  fi
+  ;;
+esac
