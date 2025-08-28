@@ -17,20 +17,20 @@ function rollback_lambda() {
 
   # Get deployment metadata
   local deployment_result
-  deployment_result=$(get_build_metadata "deployment:aws_lambda:result" "unknown")
+  deployment_result=$(get_build_metadata "deployment:aws_lambda:${function_name}:result" "unknown")
 
   local current_version
-  current_version=$(get_build_metadata "deployment:aws_lambda:current_version" "")
+  current_version=$(get_build_metadata "deployment:aws_lambda:${function_name}:current_version" "")
 
   local previous_version
-  previous_version=$(get_build_metadata "deployment:aws_lambda:previous_version" "")
+  previous_version=$(get_build_metadata "deployment:aws_lambda:${function_name}:previous_version" "")
 
   local previous_arn
   # shellcheck disable=SC2034
-  previous_arn=$(get_build_metadata "deployment:aws_lambda:previous_arn" "")
+  previous_arn=$(get_build_metadata "deployment:aws_lambda:${function_name}:previous_arn" "")
 
   local auto_rollback
-  auto_rollback=$(get_build_metadata "deployment:aws_lambda:auto_rollback" "false")
+  auto_rollback=$(get_build_metadata "deployment:aws_lambda:${function_name}:auto_rollback" "false")
 
   log_info "Deployment result: ${deployment_result}"
   log_info "Current version: ${current_version}"
@@ -68,7 +68,7 @@ function rollback_lambda() {
       log_success ":leftwards_arrow_with_hook: Manual rollback completed successfully"
     else
       log_warning "Insufficient metadata for rollback"
-      create_annotation "warning" "lambda-rollback" \
+      create_annotation "warning" "lambda-rollback-${function_name}" \
         "⚠️ **Lambda Rollback Warning**\n\nInsufficient deployment metadata found for function \`${function_name}\`.\nCannot perform automatic rollback."
       return 1
     fi
@@ -107,12 +107,12 @@ function perform_rollback() {
   if [[ -n "${failed_version}" && "${failed_version}" != "\$LATEST" ]]; then
     log_info ":information_source: Failed version ${failed_version} preserved for analysis"
     log_info "To manually delete later: aws lambda delete-function --function-name ${function_name} --qualifier ${failed_version}"
-    set_build_metadata "deployment:aws_lambda:failed_version_preserved" "${failed_version}"
+    set_build_metadata "deployment:aws_lambda:${function_name}:failed_version_preserved" "${failed_version}"
   fi
 
   # Update metadata to reflect rollback
-  set_build_metadata "deployment:aws_lambda:result" "rolled_back"
-  set_build_metadata "deployment:aws_lambda:rollback_completed" "true"
+  set_build_metadata "deployment:aws_lambda:${function_name}:result" "rolled_back"
+  set_build_metadata "deployment:aws_lambda:${function_name}:rollback_completed" "true"
 
   return 0
 }
@@ -124,7 +124,7 @@ function create_deployment_success_annotation() {
   local current_version="$4"
 
   local package_type
-  package_type=$(get_build_metadata "deployment:aws_lambda:package_type" "Zip")
+  package_type=$(get_build_metadata "deployment:aws_lambda:${function_name}:package_type" "Zip")
 
   local annotation_body
   annotation_body="🚀 **Lambda Deployment Successful**
@@ -139,7 +139,7 @@ function create_deployment_success_annotation() {
 
 Deployment completed successfully and is ready for use."
 
-  create_annotation "success" "lambda-deployment" "${annotation_body}"
+  create_annotation "success" "lambda-deployment-${function_name}" "${annotation_body}"
 }
 
 function create_rollback_success_annotation() {
@@ -149,7 +149,7 @@ function create_rollback_success_annotation() {
   local rollback_version="$4"
 
   local package_type
-  package_type=$(get_build_metadata "deployment:aws_lambda:package_type" "Zip")
+  package_type=$(get_build_metadata "deployment:aws_lambda:${function_name}:package_type" "Zip")
 
   local annotation_body
   annotation_body="↩️ **Lambda Rollback Successful**
@@ -164,7 +164,7 @@ function create_rollback_success_annotation() {
 
 The deployment has been rolled back due to failures during deployment or health checks."
 
-  create_annotation "warning" "lambda-rollback" "${annotation_body}"
+  create_annotation "warning" "lambda-rollback-${function_name}" "${annotation_body}"
 }
 
 function create_rollback_failed_annotation() {
@@ -185,5 +185,5 @@ function create_rollback_failed_annotation() {
 
 **Action Required:** Manual intervention needed to restore the function to a working state."
 
-  create_annotation "error" "lambda-rollback-failed" "${annotation_body}"
+  create_annotation "error" "lambda-rollback-failed-${function_name}" "${annotation_body}"
 }

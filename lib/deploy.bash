@@ -8,7 +8,7 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "${DIR}/plugin.bash"
 
 function deploy_lambda() {
-    deploy_aws_cli "$@"
+  deploy_aws_cli "$@"
 }
 
 function deploy_aws_cli() {
@@ -25,13 +25,13 @@ function deploy_aws_cli() {
   if [[ -n "${previous_version}" ]]; then
     local previous_arn
     previous_arn=$(get_function_arn "${function_name}" "${previous_version}" "${aws_args[@]+${aws_args[@]}}")
-    set_build_metadata "deployment:aws_lambda:previous_version" "${previous_version}"
-    set_build_metadata "deployment:aws_lambda:previous_arn" "${previous_arn}"
+    set_build_metadata "deployment:aws_lambda:${function_name}:previous_version" "${previous_version}"
+    set_build_metadata "deployment:aws_lambda:${function_name}:previous_arn" "${previous_arn}"
     log_info "Current alias ${alias_name} points to version ${previous_version}"
   else
     log_info "Alias ${alias_name} does not exist or has no target"
-    set_build_metadata "deployment:aws_lambda:previous_version" ""
-    set_build_metadata "deployment:aws_lambda:previous_arn" ""
+    set_build_metadata "deployment:aws_lambda:${function_name}:previous_version" ""
+    set_build_metadata "deployment:aws_lambda:${function_name}:previous_arn" ""
   fi
 
   # If alias target is $LATEST create a baseline numeric version for canary deployments
@@ -53,8 +53,8 @@ function deploy_aws_cli() {
       --name "${alias_name}" \
       --function-version "${baseline_version}"; then
       previous_version="${baseline_version}"
-      set_build_metadata "deployment:aws_lambda:previous_version" "${baseline_version}"
-      set_build_metadata "deployment:aws_lambda:previous_arn" "$(get_function_arn "${function_name}" "${baseline_version}" "${aws_args[@]+${aws_args[@]}}")"
+      set_build_metadata "deployment:aws_lambda:${function_name}:previous_version" "${baseline_version}"
+      set_build_metadata "deployment:aws_lambda:${function_name}:previous_arn" "$(get_function_arn "${function_name}" "${baseline_version}" "${aws_args[@]+${aws_args[@]}}")"
     else
       log_error "Failed to update alias to baseline version"
       return 1
@@ -66,7 +66,7 @@ function deploy_aws_cli() {
   local deployment_strategy="${BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_STRATEGY:-direct}"
 
   local package_type="${BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_PACKAGE_TYPE:-Zip}"
-  set_build_metadata "deployment:aws_lambda:package_type" "${package_type}"
+  set_build_metadata "deployment:aws_lambda:${function_name}:package_type" "${package_type}"
 
   case "${package_type}" in
   "Zip")
@@ -112,7 +112,7 @@ function deploy_aws_cli() {
 
   if [[ $update_exit_code -ne 0 ]]; then
     log_error "Failed to update function code"
-    set_build_metadata "deployment:aws_lambda:result" "failed"
+    set_build_metadata "deployment:aws_lambda:${function_name}:result" "failed"
     return $update_exit_code
   fi
 
@@ -136,7 +136,7 @@ function deploy_aws_cli() {
   # Wait for function to be active
   if ! wait_for_function_active "${function_name}" "${new_version}" 300 "${aws_args[@]+${aws_args[@]}}"; then
     log_error "Function failed to become active"
-    set_build_metadata "deployment:aws_lambda:result" "failed"
+    set_build_metadata "deployment:aws_lambda:${function_name}:result" "failed"
     return 1
   fi
 
@@ -145,7 +145,7 @@ function deploy_aws_cli() {
     log_info "Updating function configuration"
     if ! update_function_configuration "${function_name}" "${new_version}" "${aws_args[@]+${aws_args[@]}}"; then
       log_error "Failed to update function configuration"
-      set_build_metadata "deployment:aws_lambda:result" "failed"
+      set_build_metadata "deployment:aws_lambda:${function_name}:result" "failed"
       return 1
     fi
   fi
@@ -153,8 +153,8 @@ function deploy_aws_cli() {
   # Store new version info
   local new_arn
   new_arn=$(get_function_arn "${function_name}" "${new_version}" "${aws_args[@]+${aws_args[@]}}")
-  set_build_metadata "deployment:aws_lambda:current_version" "${new_version}"
-  set_build_metadata "deployment:aws_lambda:current_arn" "${new_arn}"
+  set_build_metadata "deployment:aws_lambda:${function_name}:current_version" "${new_version}"
+  set_build_metadata "deployment:aws_lambda:${function_name}:current_arn" "${new_arn}"
 
   # Run health checks if enabled
   local health_check_enabled="${BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_HEALTH_CHECK_ENABLED:-false}"
@@ -166,8 +166,8 @@ function deploy_aws_cli() {
       local auto_rollback="${BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_AUTO_ROLLBACK:-false}"
       if [[ "${auto_rollback}" == "true" ]]; then
         log_header ":lambda: Auto-rollback enabled, rolling back deployment"
-        set_build_metadata "deployment:aws_lambda:result" "failed"
-        set_build_metadata "deployment:aws_lambda:auto_rollback" "true"
+        set_build_metadata "deployment:aws_lambda:${function_name}:result" "failed"
+        set_build_metadata "deployment:aws_lambda:${function_name}:auto_rollback" "true"
         return 1
       else
         log_warning "Auto-rollback not enabled, continuing with deployment"
@@ -205,7 +205,7 @@ function deploy_aws_cli() {
           --name "${alias_name}" \
           --routing-config "{\"AdditionalVersionWeights\": {\"${new_version}\": ${weight}}}"; then
           log_error "Failed to update alias during linear canary deployment"
-          set_build_metadata "deployment:aws_lambda:result" "failed"
+          set_build_metadata "deployment:aws_lambda:${function_name}:result" "failed"
           return 1
         fi
 
@@ -216,8 +216,8 @@ function deploy_aws_cli() {
       done
 
       log_success "Linear canary deployment complete. 100% traffic on version ${new_version}."
-      set_build_metadata "deployment:aws_lambda:result" "success"
-      create_annotation "success" "aws-lambda-deploy" "✅ Linear canary deployment completed successfully (version ${new_version})"
+      set_build_metadata "deployment:aws_lambda:${function_name}:result" "success"
+      create_linear_canary_success_annotation "${function_name}" "${alias_name}" "${new_version}" "${previous_version}" "${canary_steps}"
 
     else # all-at-once
       # Canary deployment with traffic shifting
@@ -231,7 +231,7 @@ function deploy_aws_cli() {
         --name "${alias_name}" \
         --routing-config "{\"AdditionalVersionWeights\": {\"${new_version}\": ${canary_weight}}}"; then
         log_error "Failed to start canary deployment"
-        set_build_metadata "deployment:aws_lambda:result" "failed"
+        set_build_metadata "deployment:aws_lambda:${function_name}:result" "failed"
         echo '^^^ +++'
         return 1
       fi
@@ -240,10 +240,10 @@ function deploy_aws_cli() {
       local canary_percent
       canary_percent=$(awk -v weight="${canary_weight}" 'BEGIN { print weight * 100 }')
 
-      set_build_metadata "deployment:aws_lambda:canary_version" "${new_version}"
-      set_build_metadata "deployment:aws_lambda:canary_weight" "${canary_weight}"
+      set_build_metadata "deployment:aws_lambda:${function_name}:canary_version" "${new_version}"
+      set_build_metadata "deployment:aws_lambda:${function_name}:canary_weight" "${canary_weight}"
       log_info "Canary deployment active - ${canary_percent}% traffic to version ${new_version}"
-      create_annotation "info" "aws-lambda-deploy" "Canary deployment active - ${canary_percent}% traffic to version ${new_version}"
+      create_annotation "info" "aws-lambda-deploy-${function_name}" "Canary deployment active - ${canary_percent}% traffic to version ${new_version}"
       log_info "Use 'promote-canary' mode to shift 100% traffic to new version"
     fi
   else
@@ -254,7 +254,7 @@ function deploy_aws_cli() {
       --name "${alias_name}" \
       --function-version "${new_version}"; then
       log_error "Failed to update alias"
-      set_build_metadata "deployment:aws_lambda:result" "failed"
+      set_build_metadata "deployment:aws_lambda:${function_name}:result" "failed"
       return 1
     fi
   fi
@@ -268,8 +268,8 @@ function deploy_aws_cli() {
       local auto_rollback="${BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_AUTO_ROLLBACK:-false}"
       if [[ "${auto_rollback}" == "true" ]]; then
         log_header ":lambda: Auto-rollback enabled, rolling back deployment"
-        set_build_metadata "deployment:aws_lambda:result" "failed"
-        set_build_metadata "deployment:aws_lambda:auto_rollback" "true"
+        set_build_metadata "deployment:aws_lambda:${function_name}:result" "failed"
+        set_build_metadata "deployment:aws_lambda:${function_name}:auto_rollback" "true"
         return 1
       fi
     else
@@ -292,21 +292,21 @@ function deploy_aws_cli() {
 
   # Create success annotation only for direct strategy; avoid overriding canary warning
   if [[ "${deployment_strategy}" != "canary" ]]; then
-    set_build_metadata "deployment:aws_lambda:result" "success"
-    create_annotation "success" "aws-lambda-deploy" "✅ Lambda deployment completed successfully (version ${new_version})"
+    set_build_metadata "deployment:aws_lambda:${function_name}:result" "success"
+    create_deployment_success_annotation "${function_name}" "${alias_name}" "${previous_version}" "${new_version}" "${deployment_strategy}"
   fi
   log_success "🚀 Lambda deployment for ${function_name} to version ${new_version} completed successfully"
   return 0
 }
 
 function should_update_configuration() {
-  [[ -n "${BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_ENVIRONMENT:-}" ]] ||
-    [[ -n "${BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_TIMEOUT:-}" ]] ||
-    [[ -n "${BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_MEMORY_SIZE:-}" ]] ||
-    [[ -n "${BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_RUNTIME:-}" ]] ||
-    [[ -n "${BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_HANDLER:-}" ]] ||
-    [[ -n "${BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_DESCRIPTION:-}" ]] ||
-    [[ -n "${BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_IMAGE_CONFIG:-}" ]]
+  [[ -n "${BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_ENVIRONMENT:-}" ]] \
+    || [[ -n "${BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_TIMEOUT:-}" ]] \
+    || [[ -n "${BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_MEMORY_SIZE:-}" ]] \
+    || [[ -n "${BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_RUNTIME:-}" ]] \
+    || [[ -n "${BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_HANDLER:-}" ]] \
+    || [[ -n "${BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_DESCRIPTION:-}" ]] \
+    || [[ -n "${BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_IMAGE_CONFIG:-}" ]]
 }
 
 function update_function_configuration() {
@@ -387,10 +387,10 @@ function promote_canary() {
 
   # Get canary deployment metadata
   local canary_version
-  canary_version=$(get_build_metadata "deployment:aws_lambda:canary_version" "")
+  canary_version=$(get_build_metadata "deployment:aws_lambda:${function_name}:canary_version" "")
 
   local canary_weight
-  canary_weight=$(get_build_metadata "deployment:aws_lambda:canary_weight" "")
+  canary_weight=$(get_build_metadata "deployment:aws_lambda:${function_name}:canary_weight" "")
 
   if [[ -z "${canary_version}" ]]; then
     log_error "No canary deployment found. Use 'deploy' mode with strategy 'canary' first."
@@ -407,14 +407,104 @@ function promote_canary() {
     --function-version "${canary_version}" \
     --routing-config '{}'; then
     log_error "Failed to promote canary deployment"
-    set_build_metadata "deployment:aws_lambda:result" "failed"
+    set_build_metadata "deployment:aws_lambda:${function_name}:result" "failed"
     return 1
   fi
 
-  set_build_metadata "deployment:aws_lambda:result" "promoted"
-  set_build_metadata "deployment:aws_lambda:current_version" "${canary_version}"
-  create_annotation "success" "aws-lambda-deploy" "✅ Canary promoted – 100% traffic now on version ${canary_version}"
+  set_build_metadata "deployment:aws_lambda:${function_name}:result" "promoted"
+  set_build_metadata "deployment:aws_lambda:${function_name}:current_version" "${canary_version}"
+
+  # Get previous version for annotation
+  local previous_version
+  previous_version=$(get_build_metadata "deployment:aws_lambda:${function_name}:previous_version" "")
+
+  create_canary_promotion_annotation "${function_name}" "${alias_name}" "${canary_version}" "${previous_version}"
   log_success "🚀 Canary promoted - 100% traffic now on version ${canary_version}"
 
   return 0
+}
+
+function create_deployment_success_annotation() {
+  local function_name="$1"
+  local alias_name="$2"
+  local previous_version="$3"
+  local current_version="$4"
+  local deployment_strategy="$5"
+
+  local package_type
+  package_type=$(get_build_metadata "deployment:aws_lambda:${function_name}:package_type" "Zip")
+
+  local annotation_body
+  annotation_body="🚀 **Lambda Deployment Successful**
+
+**Function:** \`${function_name}\`
+**Alias:** \`${alias_name}\`
+**Package Type:** \`${package_type}\`
+**Strategy:** \`${deployment_strategy}\`
+
+**Version Changes:**
+- **Previous:** \`${previous_version:-"(none)"}\`
+- **Current:** \`${current_version}\`
+
+Deployment completed successfully and is ready for use."
+
+  create_annotation "success" "aws-lambda-deploy-${function_name}" "${annotation_body}"
+}
+
+function create_canary_promotion_annotation() {
+  local function_name="$1"
+  local alias_name="$2"
+  local canary_version="$3"
+  local previous_version="$4"
+
+  local package_type
+  package_type=$(get_build_metadata "deployment:aws_lambda:${function_name}:package_type" "Zip")
+
+  local canary_weight
+  canary_weight=$(get_build_metadata "deployment:aws_lambda:${function_name}:canary_weight" "unknown")
+
+  local annotation_body
+  annotation_body="🚀 **Canary Promotion Successful**
+
+**Function:** \`${function_name}\`
+**Alias:** \`${alias_name}\`
+**Package Type:** \`${package_type}\`
+
+**Promotion Details:**
+- **Previous Version:** \`${previous_version:-"(none)"}\`
+- **Promoted Version:** \`${canary_version}\`
+- **Previous Canary Weight:** \`${canary_weight}\`
+- **Current Traffic:** \`100%\`
+
+Canary deployment has been promoted to receive 100% of traffic."
+
+  create_annotation "success" "aws-lambda-deploy-${function_name}" "${annotation_body}"
+}
+
+function create_linear_canary_success_annotation() {
+  local function_name="$1"
+  local alias_name="$2"
+  local current_version="$3"
+  local previous_version="$4"
+  local canary_steps="$5"
+
+  local package_type
+  package_type=$(get_build_metadata "deployment:aws_lambda:${function_name}:package_type" "Zip")
+
+  local annotation_body
+  annotation_body="🚀 **Linear Canary Deployment Successful**
+
+**Function:** \`${function_name}\`
+**Alias:** \`${alias_name}\`
+**Package Type:** \`${package_type}\`
+
+**Deployment Details:**
+- **Previous Version:** \`${previous_version:-"(none)"}\`
+- **Current Version:** \`${current_version}\`
+- **Canary Steps:** \`${canary_steps}\`
+- **Traffic Distribution:** \`100% on new version\`
+
+Linear canary deployment completed successfully over ${canary_steps} step(s)."
+
+  create_annotation "success" "aws-lambda-deploy-${function_name}" "${annotation_body}"
 }
