@@ -20,11 +20,11 @@ function deploy_aws_cli() {
 
   # Get current alias target for rollback
   local previous_version
-  previous_version=$(get_alias_target "${function_name}" "${alias_name}" "${aws_args[@]}")
+  previous_version=$(get_alias_target "${function_name}" "${alias_name}" "${aws_args[@]+${aws_args[@]}}")
 
   if [[ -n "${previous_version}" ]]; then
     local previous_arn
-    previous_arn=$(get_function_arn "${function_name}" "${previous_version}" "${aws_args[@]}")
+    previous_arn=$(get_function_arn "${function_name}" "${previous_version}" "${aws_args[@]+${aws_args[@]}}")
     set_build_metadata "deployment:aws_lambda:previous_version" "${previous_version}"
     set_build_metadata "deployment:aws_lambda:previous_arn" "${previous_arn}"
     log_info "Current alias ${alias_name} points to version ${previous_version}"
@@ -39,7 +39,7 @@ function deploy_aws_cli() {
     log_header ":lambda: Alias ${alias_name} is pointing at \$LATEST – publishing baseline version"
     local baseline_output
     baseline_output=$(aws lambda publish-version \
-      "${aws_args[@]}" \
+      "${aws_args[@]+${aws_args[@]}}" \
       --function-name "${function_name}" \
       --description "Baseline published automatically by Buildkite before canary $(date)")
     local baseline_version
@@ -48,20 +48,20 @@ function deploy_aws_cli() {
 
     # Point alias 100% to baseline version so we can shift some traffic later
     if aws lambda update-alias \
-      "${aws_args[@]}" \
+      "${aws_args[@]+${aws_args[@]}}" \
       --function-name "${function_name}" \
       --name "${alias_name}" \
       --function-version "${baseline_version}"; then
       previous_version="${baseline_version}"
       set_build_metadata "deployment:aws_lambda:previous_version" "${baseline_version}"
-      set_build_metadata "deployment:aws_lambda:previous_arn" "$(get_function_arn "${function_name}" "${baseline_version}" "${aws_args[@]}")"
+      set_build_metadata "deployment:aws_lambda:previous_arn" "$(get_function_arn "${function_name}" "${baseline_version}" "${aws_args[@]+${aws_args[@]}}")"
     else
       log_error "Failed to update alias to baseline version"
       return 1
     fi
   fi
 
-  local update_command=(aws lambda update-function-code "${aws_args[@]}" --function-name "${function_name}" --publish)
+  local update_command=(aws lambda update-function-code "${aws_args[@]+${aws_args[@]}}" --function-name "${function_name}" --publish)
 
   local deployment_strategy="${BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_STRATEGY:-direct}"
 
@@ -126,7 +126,7 @@ function deploy_aws_cli() {
     log_header ":lambda: Detected \$LATEST, publishing explicit version"
     local publish_output
     publish_output=$(aws lambda publish-version \
-      "${aws_args[@]}" \
+      "${aws_args[@]+${aws_args[@]}}" \
       --function-name "${function_name}" \
       --description "Published by Buildkite deployment at $(date)")
     new_version=$(echo "${publish_output}" | jq -r '.Version')
@@ -134,7 +134,7 @@ function deploy_aws_cli() {
   fi
 
   # Wait for function to be active
-  if ! wait_for_function_active "${function_name}" "${new_version}" 300 "${aws_args[@]}"; then
+  if ! wait_for_function_active "${function_name}" "${new_version}" 300 "${aws_args[@]+${aws_args[@]}}"; then
     log_error "Function failed to become active"
     set_build_metadata "deployment:aws_lambda:result" "failed"
     return 1
@@ -143,7 +143,7 @@ function deploy_aws_cli() {
   # Update function configuration if provided
   if should_update_configuration; then
     log_info "Updating function configuration"
-    if ! update_function_configuration "${function_name}" "${new_version}" "${aws_args[@]}"; then
+    if ! update_function_configuration "${function_name}" "${new_version}" "${aws_args[@]+${aws_args[@]}}"; then
       log_error "Failed to update function configuration"
       set_build_metadata "deployment:aws_lambda:result" "failed"
       return 1
@@ -152,7 +152,7 @@ function deploy_aws_cli() {
 
   # Store new version info
   local new_arn
-  new_arn=$(get_function_arn "${function_name}" "${new_version}" "${aws_args[@]}")
+  new_arn=$(get_function_arn "${function_name}" "${new_version}" "${aws_args[@]+${aws_args[@]}}")
   set_build_metadata "deployment:aws_lambda:current_version" "${new_version}"
   set_build_metadata "deployment:aws_lambda:current_arn" "${new_arn}"
 
@@ -160,7 +160,7 @@ function deploy_aws_cli() {
   local health_check_enabled="${BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_HEALTH_CHECK_ENABLED:-false}"
   if [[ "${health_check_enabled}" == "true" ]]; then
     log_header ":lambda: Running health checks"
-    if ! run_health_checks "${function_name}" "${new_version}" "${aws_args[@]}"; then
+    if ! run_health_checks "${function_name}" "${new_version}" "${aws_args[@]+${aws_args[@]}}"; then
       log_warning "Health checks failed"
 
       local auto_rollback="${BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_AUTO_ROLLBACK:-false}"
@@ -200,7 +200,7 @@ function deploy_aws_cli() {
         log_info "Step ${i}/${canary_steps}: Shifting ${percent}% traffic to version ${new_version}"
 
         if ! aws lambda update-alias \
-          "${aws_args[@]}" \
+          "${aws_args[@]+${aws_args[@]}}" \
           --function-name "${function_name}" \
           --name "${alias_name}" \
           --routing-config "{\"AdditionalVersionWeights\": {\"${new_version}\": ${weight}}}"; then
@@ -226,7 +226,7 @@ function deploy_aws_cli() {
 
       log_info "Updating alias with canary configuration"
       if ! aws lambda update-alias \
-        "${aws_args[@]}" \
+        "${aws_args[@]+${aws_args[@]}}" \
         --function-name "${function_name}" \
         --name "${alias_name}" \
         --routing-config "{\"AdditionalVersionWeights\": {\"${new_version}\": ${canary_weight}}}"; then
@@ -249,7 +249,7 @@ function deploy_aws_cli() {
   else
     # Direct deployment (immediate 100% traffic)
     if ! aws lambda update-alias \
-      "${aws_args[@]}" \
+      "${aws_args[@]+${aws_args[@]}}" \
       --function-name "${function_name}" \
       --name "${alias_name}" \
       --function-version "${new_version}"; then
@@ -262,7 +262,7 @@ function deploy_aws_cli() {
   # Run post-deployment health checks
   if [[ "${health_check_enabled}" == "true" ]]; then
     log_header ":lambda: Running post-deployment health checks"
-    if ! run_health_checks "${function_name}" "${alias_name}" "${aws_args[@]}"; then
+    if ! run_health_checks "${function_name}" "${alias_name}" "${aws_args[@]+${aws_args[@]}}"; then
       log_warning "Post-deployment health checks failed"
 
       local auto_rollback="${BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_AUTO_ROLLBACK:-false}"
@@ -279,7 +279,7 @@ function deploy_aws_cli() {
 
       if [[ "${deployment_strategy}" == "canary" && "${canary_type}" == "all-at-once" && "${canary_auto_promote}" == "true" ]]; then
         log_header ":lambda: Auto-promoting canary deployment"
-        if promote_canary "${function_name}" "${alias_name}" "${aws_args[@]}"; then
+        if promote_canary "${function_name}" "${alias_name}" "${aws_args[@]+${aws_args[@]}}"; then
           log_success "Canary auto-promotion successful"
         else
           log_error "Canary auto-promotion failed"
@@ -314,7 +314,7 @@ function update_function_configuration() {
   local version="$2"
   local aws_args=("${@:3}")
 
-  local config_command=(aws lambda update-function-configuration "${aws_args[@]}" --function-name "${function_name}")
+  local config_command=(aws lambda update-function-configuration "${aws_args[@]+${aws_args[@]}}" --function-name "${function_name}")
 
   if [[ -n "${BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_ENVIRONMENT:-}" ]]; then
     config_command+=(--environment "Variables=${BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_ENVIRONMENT}")
@@ -364,7 +364,7 @@ function run_health_checks() {
   payload_file=$(mktemp)
   printf '%s' "${payload}" >"${payload_file}"
 
-  if ! test_function_invocation "${function_name}" "${version}" "${payload_file}" "${expected_status}" "${aws_args[@]}"; then
+  if ! test_function_invocation "${function_name}" "${version}" "${payload_file}" "${expected_status}" "${aws_args[@]+${aws_args[@]}}"; then
     rm -f "${payload_file}"
     return 1
   fi
@@ -401,7 +401,7 @@ function promote_canary() {
 
   # Update alias to point 100% traffic to canary version
   if ! aws lambda update-alias \
-    "${aws_args[@]}" \
+    "${aws_args[@]+${aws_args[@]}}" \
     --function-name "${function_name}" \
     --name "${alias_name}" \
     --function-version "${canary_version}" \

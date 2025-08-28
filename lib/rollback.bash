@@ -40,7 +40,7 @@ function rollback_lambda() {
   case "${deployment_result}" in
   "failed")
     log_header ":lambda: Deployment failed, performing rollback"
-    if ! perform_rollback "${function_name}" "${alias_name}" "${previous_version}" "${current_version}" "${aws_args[@]}"; then
+    if ! perform_rollback "${function_name}" "${alias_name}" "${previous_version}" "${current_version}" "${aws_args[@]+${aws_args[@]}}"; then
       log_error "Rollback failed"
       create_rollback_failed_annotation "${function_name}" "${alias_name}" "${current_version}" "${previous_version}"
       return 1
@@ -58,7 +58,7 @@ function rollback_lambda() {
     log_warning "Unknown deployment result: ${deployment_result}"
     if [[ -n "${current_version}" && -n "${previous_version}" ]]; then
       log_header ":lambda: Performing manual rollback"
-      if ! perform_rollback "${function_name}" "${alias_name}" "${previous_version}" "${current_version}" "${aws_args[@]}"; then
+      if ! perform_rollback "${function_name}" "${alias_name}" "${previous_version}" "${current_version}" "${aws_args[@]+${aws_args[@]}}"; then
         log_error "Manual rollback failed"
         create_rollback_failed_annotation "${function_name}" "${alias_name}" "${current_version}" "${previous_version}"
         return 1
@@ -94,7 +94,7 @@ function perform_rollback() {
 
   # Update alias to point to previous version
   if ! aws lambda update-alias \
-    "${aws_args[@]}" \
+    "${aws_args[@]+${aws_args[@]}}" \
     --function-name "${function_name}" \
     --name "${alias_name}" \
     --function-version "${rollback_version}"; then
