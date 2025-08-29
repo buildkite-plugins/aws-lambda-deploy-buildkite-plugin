@@ -1,0 +1,20 @@
+steps:
+  - label: ":rocket: Deploy Lambda container"
+    plugins:
+      - aws-lambda-deploy#v1.0.0:
+          function-name: "my-container-function"
+          alias: "production"
+          mode: "deploy"
+          package-type: "Image"
+          image-uri: "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-function:${BUILDKITE_BUILD_NUMBER}"
+          region: "us-east-1"
+          timeout: 300
+          memory-size: 512
+          description: "Container deployment from build ${BUILDKITE_BUILD_NUMBER}"
+          environment:
+            STAGE: "production"
+            VERSION: "${BUILDKITE_BUILD_NUMBER}"
+          auto-rollback: true
+          health-check-enabled: true
+          health-check-payload: '{"length": 5, "width": 10}'
+          health-check-timeout: 120

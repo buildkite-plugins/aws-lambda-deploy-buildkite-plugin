@@ -1,0 +1,25 @@
+steps:
+  - label: ":rocket: Deploy Lambda (no auto-rollback)"
+    plugins:
+      - aws-lambda-deploy#v1.0.0:
+          function-name: "my-function"
+          alias: "production"
+          mode: "deploy"
+          zip-file: "function.zip"
+          region: "us-east-1"
+          runtime: "python3.13"
+          handler: "lambda_function.lambda_handler"
+          timeout: 30
+          memory-size: 128
+          description: "Deployment from build ${BUILDKITE_BUILD_NUMBER}"
+
+  - block: ":thinking_face: Review deployment"
+    prompt: "Check if the deployment is working correctly"
+
+  - label: ":leftwards_arrow_with_hook: Manual rollback"
+    plugins:
+      - aws-lambda-deploy#v1.0.0:
+          function-name: "my-function"
+          alias: "production"
+          mode: "rollback"
+          region: "us-east-1"
