@@ -1,0 +1,28 @@
+steps:
+  - label: ":package: Build function"
+    command: |
+      echo "Building Lambda function..."
+      # Your build commands here
+      zip -r function.zip src/
+    
+  - label: ":rocket: Deploy Lambda"
+    plugins:
+      - aws-lambda-deploy#v1.0.0:
+          function-name: "my-function"
+          alias: "production"
+          mode: "deploy"
+          zip-file: "function.zip"
+          region: "us-east-1"
+          runtime: "python3.13"
+          handler: "lambda_function.lambda_handler"
+          timeout: 30
+          memory-size: 128
+          description: "Deployed from build ${BUILDKITE_BUILD_NUMBER}"
+          environment:
+            LOG_LEVEL: "INFO"
+            STAGE: "production"
+          auto-rollback: true
+          health-check-enabled: true
+          health-check-timeout: 60
+          health-check-payload: '{"test": true}'
+

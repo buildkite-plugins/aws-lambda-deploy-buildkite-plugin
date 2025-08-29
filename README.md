@@ -12,27 +12,8 @@ A Buildkite plugin for deploying AWS Lambda functions with alias management, hea
 - ✅ **Build Metadata**: Tracks deployment state across pipeline steps
 - ✅ **Annotations**: Creates detailed deployment and rollback annotations
 
-## Example
-
-This example deploys a Lambda function from a zip file.
-
-```yaml
-steps:
-  - label: ":rocket: Deploy Lambda"
-    plugins:
-      - aws-lambda-deploy#v1.0.0:
-          function-name: "my-function"
-          alias: "production" 
-          mode: "deploy"
-          zip-file: "function.zip"
-```
-
 ## Quick Start
 
-### Basic Zip File Deployment
-
-Add the following to your `pipeline.yml`:
-
 ```yaml
 steps:
   - label: ":rocket: Deploy Lambda"
@@ -42,35 +23,19 @@ steps:
           alias: "production"
           mode: "deploy"
           zip-file: "function.zip"
-          region: "us-east-1"
-
-  - block: ":thinking_face: Review deployment"
-
-  - label: ":leftwards_arrow_with_hook: Rollback assessment"
-    plugins:
-      - aws-lambda-deploy#v1.0.0:
-          function-name: "my-function"
-          alias: "production"
-          mode: "rollback"
-          region: "us-east-1"
-```
-
-### Container Image Deployment
-
-```yaml
-steps:
-  - label: ":rocket: Deploy Lambda container"
-    plugins:
-      - aws-lambda-deploy#v1.0.0:
-          function-name: "my-container-function"
-          alias: "production"
-          mode: "deploy"
-          package-type: "Image"
-          image-uri: "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-function:latest"
           region: "us-east-1"
           auto-rollback: true
           health-check-enabled: true
+          health-check-payload: '{"length": 5, "width": 10}'
+
 ```
+
+For complete examples, see the [examples/](examples/) directory:
+
+- **[deploy-zip-file.yml](examples/deploy-zip-file.yml)** - Deploy from local zip file with full configuration
+- **[deploy-s3.yml](examples/deploy-s3.yml)** - Deploy from S3-stored package  
+- **[deploy-container.yml](examples/deploy-container.yml)** - Deploy container image with auto-rollback
+- **[manual-rollback.yml](examples/manual-rollback.yml)** - Manual rollback workflow
 
 ## Configuration
 
@@ -155,66 +120,15 @@ The rollback mode assesses the deployment state and takes appropriate action:
 
 ### Build Metadata
 
-The plugin uses Buildkite build metadata to track deployment state:
+The plugin uses Buildkite build metadata to track deployment state. All keys are namespaced by function name to support multiple function deployments:
 
-- `deployment:aws_lambda:current_version` - Current Lambda version
-- `deployment:aws_lambda:previous_version` - Previous version for rollback
-- `deployment:aws_lambda:result` - Deployment result (success/failed/rolled_back)
-- `deployment:aws_lambda:package_type` - Package type used
-- `deployment:aws_lambda:auto_rollback` - Whether auto-rollback was triggered
+- `deployment:aws_lambda:{function_name}:current_version` - Current Lambda version
+- `deployment:aws_lambda:{function_name}:previous_version` - Previous version for rollback
+- `deployment:aws_lambda:{function_name}:result` - Deployment result (success/failed/rolled_back)
+- `deployment:aws_lambda:{function_name}:package_type` - Package type used
+- `deployment:aws_lambda:{function_name}:auto_rollback` - Whether auto-rollback was triggered
 
-## Examples
-
-See the [examples](examples/) directory for complete pipeline configurations:
-
-- [deploy-zip-file.yml](examples/deploy-zip-file.yml) - Deploy from local zip file
-- [deploy-s3.yml](examples/deploy-s3.yml) - Deploy from S3-stored package
-- [deploy-container.yml](examples/deploy-container.yml) - Deploy container image
-- [manual-rollback.yml](examples/manual-rollback.yml) - Manual rollback operation
-
-## Advanced Usage
-
-### Environment Variables
-
-You can use Buildkite environment variables in your configuration:
-
-```yaml
-plugins:
-  - aws-lambda-deploy:
-      function-name: "my-function"
-      alias: "production"
-      mode: "deploy"
-      s3-key: "releases/${BUILDKITE_BUILD_NUMBER}/function.zip"
-      description: "Deployed from build ${BUILDKITE_BUILD_NUMBER}"
-```
-
-### Multi-Stage Deployments
-
-```yaml
-steps:
-  # Deploy to staging
-  - label: ":rocket: Deploy to staging"
-    plugins:
-      - aws-lambda-deploy#v1.0.0:
-          function-name: "my-function"
-          alias: "staging"
-          mode: "deploy"
-          zip-file: "function.zip"
-
-  # Manual approval
-  - block: ":thinking_face: Approve production deployment"
-
-  # Deploy to production
-  - label: ":rocket: Deploy to production"
-    plugins:
-      - aws-lambda-deploy#v1.0.0:
-          function-name: "my-function"
-          alias: "production"
-          mode: "deploy"
-          zip-file: "function.zip"
-          auto-rollback: true
-          health-check-enabled: true
-```
+For example, when deploying a function named `my-api`, the metadata keys would be `deployment:aws_lambda:my-api:current_version`, etc.
 
 ## Requirements
 
@@ -223,6 +137,8 @@ steps:
 - Appropriate AWS IAM permissions for Lambda operations
 
 ### Required IAM Permissions
+
+Example policy
 
 ```json
 {
@@ -258,4 +174,3 @@ steps:
 ## License
 
 MIT License - see [LICENSE](LICENSE) file for details.
-

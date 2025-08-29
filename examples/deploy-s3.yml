@@ -1,0 +1,30 @@
+steps:
+  - label ":rocket: Deploy Lambda from S3"
+    plugins:
+      - aws-lambda-deploy#v1.0.0:
+          function-name: "my-s3-function"
+          alias: "production"
+          mode: "deploy"
+          s3-bucket: "my-lambda-deployments"
+          s3-key: "releases/${BUILDKITE_BUILD_NUMBER}/function.zip"
+          region: "us-east-1"
+          runtime: "nodejs18.x"
+          handler: "index.handler"
+          timeout: 60
+          memory-size: 256
+          description: "S3 deployment from build ${BUILDKITE_BUILD_NUMBER}"
+          environment:
+            NODE_ENV: "production"
+            BUILD_NUMBER: "${BUILDKITE_BUILD_NUMBER}"
+          auto-rollback: true
+          health-check-enabled: true
+
+  - block: ":thinking_face: Review deployment"
+
+  - label: ":leftwards_arrow_with_hook: Rollback if needed"
+    plugins:
+      - aws-lambda-deploy#v1.0.0:
+          function-name: "my-s3-function"
+          alias: "production"
+          mode: "rollback"
+          region: "us-east-1"
