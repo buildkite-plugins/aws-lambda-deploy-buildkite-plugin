@@ -198,17 +198,17 @@ teardown() {
   # Override the buildkite-agent stub for this test
   unstub buildkite-agent || true
   stub buildkite-agent \
-    "meta-data exists deployment:aws_lambda:result : exit 0" \
-    "meta-data get deployment:aws_lambda:result : echo success" \
-    "meta-data exists deployment:aws_lambda:current_version : exit 0" \
-    "meta-data get deployment:aws_lambda:current_version : echo 2" \
-    "meta-data exists deployment:aws_lambda:previous_version : exit 0" \
-    "meta-data get deployment:aws_lambda:previous_version : echo 1" \
-    "meta-data exists deployment:aws_lambda:previous_arn : exit 0" \
-    "meta-data get deployment:aws_lambda:previous_arn : echo arn:aws:lambda:us-east-1:123456789012:function:test-function:1" \
-    "meta-data exists deployment:aws_lambda:auto_rollback : exit 1" \
-    "meta-data exists deployment:aws_lambda:package_type : exit 0" \
-    "meta-data get deployment:aws_lambda:package_type : echo Zip" \
+    "meta-data exists deployment:aws_lambda:test-function:result : exit 0" \
+    "meta-data get deployment:aws_lambda:test-function:result : echo success" \
+    "meta-data exists deployment:aws_lambda:test-function:current_version : exit 0" \
+    "meta-data get deployment:aws_lambda:test-function:current_version : echo 2" \
+    "meta-data exists deployment:aws_lambda:test-function:previous_version : exit 0" \
+    "meta-data get deployment:aws_lambda:test-function:previous_version : echo 1" \
+    "meta-data exists deployment:aws_lambda:test-function:previous_arn : exit 0" \
+    "meta-data get deployment:aws_lambda:test-function:previous_arn : echo arn:aws:lambda:us-east-1:123456789012:function:test-function:1" \
+    "meta-data exists deployment:aws_lambda:test-function:auto_rollback : exit 1" \
+    "meta-data exists deployment:aws_lambda:test-function:package_type : exit 0" \
+    "meta-data get deployment:aws_lambda:test-function:package_type : echo Zip" \
     "annotate --style success --context lambda-deployment * : echo Annotation created"
 
   stub aws \
@@ -228,14 +228,14 @@ teardown() {
   # Override the buildkite-agent stub for this test
   unstub buildkite-agent || true
   stub buildkite-agent \
-    "meta-data exists deployment:aws_lambda:result : exit 0" \
-    "meta-data get deployment:aws_lambda:result : echo failure" \
-    "meta-data exists deployment:aws_lambda:current_version : exit 0" \
-    "meta-data get deployment:aws_lambda:current_version : echo 2" \
-    "meta-data exists deployment:aws_lambda:previous_version : exit 0" \
-    "meta-data get deployment:aws_lambda:previous_version : echo 1" \
-    "meta-data exists deployment:aws_lambda:auto_rollback : exit 0" \
-    "meta-data get deployment:aws_lambda:auto_rollback : echo true" \
+    "meta-data exists deployment:aws_lambda:test-function:result : exit 0" \
+    "meta-data get deployment:aws_lambda:test-function:result : echo failure" \
+    "meta-data exists deployment:aws_lambda:test-function:current_version : exit 0" \
+    "meta-data get deployment:aws_lambda:test-function:current_version : echo 2" \
+    "meta-data exists deployment:aws_lambda:test-function:previous_version : exit 0" \
+    "meta-data get deployment:aws_lambda:test-function:previous_version : echo 1" \
+    "meta-data exists deployment:aws_lambda:test-function:auto_rollback : exit 0" \
+    "meta-data get deployment:aws_lambda:test-function:auto_rollback : echo true" \
     "annotate --style success --context lambda-deployment * : echo Annotation created"
 
   stub aws \

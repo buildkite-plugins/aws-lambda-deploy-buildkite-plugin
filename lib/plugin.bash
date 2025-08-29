@@ -116,7 +116,7 @@ function get_alias_target() {
   local aws_args=("${@:3}")
 
   aws lambda get-alias \
-    "${aws_args[@]}" \
+    "${aws_args[@]+${aws_args[@]}}" \
     --function-name "${function_name}" \
     --name "${alias_name}" \
     --query 'FunctionVersion' \
@@ -129,7 +129,7 @@ function get_function_arn() {
   local aws_args=("${@:3}")
 
   aws lambda get-function \
-    "${aws_args[@]}" \
+    "${aws_args[@]+${aws_args[@]}}" \
     --function-name "${function_name}" \
     --qualifier "${version}" \
     --query 'Configuration.FunctionArn' \
@@ -148,7 +148,7 @@ function wait_for_function_active() {
   while [[ $SECONDS -lt $end_time ]]; do
     local state
     state=$(aws lambda get-function \
-      "${aws_args[@]}" \
+      "${aws_args[@]+${aws_args[@]}}" \
       --function-name "${function_name}" \
       --qualifier "${version}" \
       --query 'Configuration.State' \
@@ -186,7 +186,7 @@ function test_function_invocation() {
   # information to stderr. We need to capture all of that.
   local invoke_output
   if ! invoke_output=$(aws lambda invoke \
-    "${aws_args[@]}" \
+    "${aws_args[@]+${aws_args[@]}}" \
     --cli-binary-format raw-in-base64-out \
     --function-name "${function_name}" \
     --qualifier "${version}" \
@@ -246,7 +246,7 @@ function create_lambda_function() {
   local timeout="${BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_TIMEOUT:-30}"
   local memory_size="${BUILDKITE_PLUGIN_AWS_LAMBDA_DEPLOY_MEMORY_SIZE:-128}"
 
-  local create_command=(aws lambda create-function "${aws_args[@]}" --function-name "${function_name}")
+  local create_command=(aws lambda create-function "${aws_args[@]+${aws_args[@]}}" --function-name "${function_name}")
   create_command+=(--role "${role}")
   create_command+=(--timeout "${timeout}")
   create_command+=(--memory-size "${memory_size}")
@@ -303,7 +303,7 @@ function create_lambda_function() {
 
   log_success "Function ${function_name} created successfully"
 
-  if ! wait_for_function_active "${function_name}" "\$LATEST" 300 "${aws_args[@]}"; then
+  if ! wait_for_function_active "${function_name}" "\$LATEST" 300 "${aws_args[@]+${aws_args[@]}}"; then
     log_error "Function failed to become active after creation"
     return 1
   fi
@@ -311,7 +311,7 @@ function create_lambda_function() {
   # Create alias if it doesn't exist
   log_info "Creating alias ${alias_name} for function ${function_name}"
   if ! aws lambda create-alias \
-    "${aws_args[@]}" \
+    "${aws_args[@]+${aws_args[@]}}" \
     --function-name "${function_name}" \
     --name "${alias_name}" \
     --function-version "\$LATEST" 2>/dev/null; then
