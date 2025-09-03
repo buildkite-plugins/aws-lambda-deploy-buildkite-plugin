@@ -1,11 +1,16 @@
 steps:
   - label: ":package: Build function"
-    command: |
-      echo "Building Lambda function..."
-      # Your build commands here
-      zip -r function.zip src/
-    
+    key: "build"
+    commands:
+      - echo "Building Lambda function..."
+      - zip -r function.zip src/
+    artifact_paths:
+      - "function.zip"
+
   - label: ":rocket: Deploy Lambda"
+    depends_on: "build"
+    commands:
+      - buildkite-agent artifact download "function.zip" .
     plugins:
       - aws-lambda-deploy#v1.0.0:
           function-name: "my-function"
@@ -25,4 +30,3 @@ steps:
           health-check-enabled: true
           health-check-timeout: 60
           health-check-payload: '{"test": true}'
-
